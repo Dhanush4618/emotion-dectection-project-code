@@ -1,3 +1,3 @@
-This is an final year project completed by myself with the help of my team mate
+This is an final year project completed by myself with the help of my team mates
 
 
