@@ -190,84 +190,104 @@ class EmotionDetector:
             return {"error": str(e)}
     
     def process_frame(self, frame: np.ndarray) -> List[Dict[str, Any]]:
-        """Process frame and return emotion detections for all faces"""
-        detections: List[Dict[str, Any]] = []
+    # Initialize     empty list for detections
+            detections: List[Dict[str, Any]] = []
+    
+            # Convert BGR to RGB for model / MediaPipe
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width = frame.shape[:2]
+    
+            # 1) Try MediaPipe if available
+            if self.face_detection is not None:
+                try:
+                    results = self.face_detection.process(rgb_frame)
+                except Exception as e:
+                    logger.error(f"MediaPipe face detection error: {e}")
+                    results = None
+    
+                if results and getattr(results, "detections", None):
+                    for detection in results.detections:
+                        # Get bounding box
+                        bbox = detection.location_data.relative_bounding_box
+                        x = int(bbox.xmin * width)
+                        y = int(bbox.ymin * height)
+                        w = int(bbox.width * width)
+                        h = int(bbox.height * height)
+    
+                        # Ensure coordinates are within frame bounds
+                        x = max(0, x)
+                        y = max(0, y)
+                        w = min(w, width - x)
+                        h = min(h, height - y)
+    
+                        if w > 0 and h > 0:
+                            # Extract face region (RGB for model)
+                            face_img = rgb_frame[y:y + h, x:x + w]
+    
+                            # Detect emotion
+                            emotion_result = self.detect_emotion(face_img)
+    
+                            detection_result = {
+                                "bbox": [x, y, x + w, y + h],
+                                "emotion": emotion_result
+                            }
+                            detections.append(detection_result)
+    
+                    # If we got any faces from MediaPipe, return them
+                    if detections:
+                        return detections
 
-        # Convert BGR to RGB for model / MediaPipe
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        height, width = frame.shape[:2]
+    # 2) Fallback: OpenCV Haar cascade face detection
+    if getattr(self, "face_cascade", None) is not None:
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = self.face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.05,   # more sensitive
+                minNeighbors=3,     # less strict
+                minSize=(40, 40)    # smaller faces
+            )
 
-        # 1) Try MediaPipe if available
-        if self.face_detection is not None:
-            try:
-                results = self.face_detection.process(rgb_frame)
-            except Exception as e:
-                logger.error(f"MediaPipe face detection error: {e}")
-                results = None
+            for (x, y, w, h) in faces:
+                # Ensure coordinates are within frame bounds
+                x = max(0, x)
+                y = max(0, y)
+                w = min(w, width - x)
+                h = min(h, height - y)
 
-            if results and getattr(results, "detections", None):
-                for detection in results.detections:
-                    # Get bounding box
-                    bbox = detection.location_data.relative_bounding_box
-                    x = int(bbox.xmin * width)
-                    y = int(bbox.ymin * height)
-                    w = int(bbox.width * width)
-                    h = int(bbox.height * height)
+                if w > 0 and h > 0:
+                    face_img = rgb_frame[y:y + h, x:x + w]
+                    emotion_result = self.detect_emotion(face_img)
 
-                    # Ensure coordinates are within frame bounds
-                    x = max(0, x)
-                    y = max(0, y)
-                    w = min(w, width - x)
-                    h = min(h, height - y)
+                    detection_result = {
+                        "bbox": [x, y, x + w, y + h],
+                        "emotion": emotion_result
+                    }
+                    detections.append(detection_result)
+        except Exception as e:
+            logger.error(f"OpenCV Haar cascade face detection error: {e}")
 
-                    if w > 0 and h > 0:
-                        # Extract face region (RGB for model)
-                        face_img = rgb_frame[y:y + h, x:x + w]
+    # 3) Final fallback: center crop if still no detections
+    if not detections:
+        crop_h = int(height * 0.6)
+        crop_w = int(width * 0.6)
+        x = max(0, (width - crop_w) // 2)
+        y = max(0, (height - crop_h) // 2)
+        w = min(crop_w, width - x)
+        h = min(crop_h, height - y)
 
-                        # Detect emotion
-                        emotion_result = self.detect_emotion(face_img)
+        if w > 0 and h > 0:
+            face_img = rgb_frame[y:y + h, x:x + w]
+            emotion_result = self.detect_emotion(face_img)
 
-                        detection_result = {
-                            "bbox": [x, y, x + w, y + h],
-                            "emotion": emotion_result
-                        }
-                        detections.append(detection_result)
+            detections.append({
+                "bbox": [x, y, x + w, y + h],
+                "emotion": emotion_result
+            })
 
-                # If we got any faces from MediaPipe, return them
-                if detections:
-                    return detections
-
-        # 2) Fallback: OpenCV Haar cascade face detection
-        if getattr(self, "face_cascade", None) is not None:
-            try:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                faces = self.face_cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=1.1,
-                    minNeighbors=5,
-                    minSize=(60, 60)
-                )
-
-                for (x, y, w, h) in faces:
-                    # Ensure coordinates are within frame bounds
-                    x = max(0, x)
-                    y = max(0, y)
-                    w = min(w, width - x)
-                    h = min(h, height - y)
-
-                    if w > 0 and h > 0:
-                        face_img = rgb_frame[y:y + h, x:x + w]
-                        emotion_result = self.detect_emotion(face_img)
-
-                        detection_result = {
-                            "bbox": [x, y, x + w, y + h],
-                            "emotion": emotion_result
-                        }
-                        detections.append(detection_result)
-            except Exception as e:
-                logger.error(f"OpenCV Haar cascade face detection error: {e}")
-
-        return detections
+    return detections
+    
+    
 
 # Initialize emotion detector
 emotion_detector = EmotionDetector()
