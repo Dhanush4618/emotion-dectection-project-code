@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -193,11 +194,11 @@ class EmotionDetector:
     def process_frame(self, frame: np.ndarray) -> List[Dict[str, Any]]:
         """Process frame and return emotion detections for all faces (with full-frame fallback)"""
         detections: List[Dict[str, Any]] = []
-    
+
         # Convert BGR to RGB for model / MediaPipe
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width = frame.shape[:2]
-    
+
         # 1) Try MediaPipe if available
         if self.face_detection is not None:
             try:
@@ -205,7 +206,7 @@ class EmotionDetector:
             except Exception as e:
                 logger.error(f"MediaPipe face detection error: {e}")
                 results = None
-    
+
             if results and getattr(results, "detections", None):
                 for detection in results.detections:
                     bbox = detection.location_data.relative_bounding_box
@@ -213,12 +214,12 @@ class EmotionDetector:
                     y = int(bbox.ymin * height)
                     w = int(bbox.width * width)
                     h = int(bbox.height * height)
-    
+
                     x = max(0, x)
                     y = max(0, y)
                     w = min(w, width - x)
                     h = min(h, height - y)
-    
+
                     if w > 0 and h > 0:
                         face_img = rgb_frame[y:y + h, x:x + w]
                         emotion_result = self.detect_emotion(face_img)
@@ -226,7 +227,7 @@ class EmotionDetector:
                             "bbox": [x, y, x + w, y + h],
                             "emotion": emotion_result,
                         })
-    
+
         # 2) Try OpenCV Haar cascade if available
         if not detections and getattr(self, "face_cascade", None) is not None:
             try:
@@ -242,7 +243,7 @@ class EmotionDetector:
                     y = max(0, y)
                     w = min(w, width - x)
                     h = min(h, height - y)
-    
+
                     if w > 0 and h > 0:
                         face_img = rgb_frame[y:y + h, x:x + w]
                         emotion_result = self.detect_emotion(face_img)
@@ -252,7 +253,7 @@ class EmotionDetector:
                         })
             except Exception as e:
                 logger.error(f"OpenCV Haar cascade face detection error: {e}")
-    
+
         # 3) Final fallback: use the entire frame as one face
         if not detections:
             face_img = rgb_frame  # whole frame
@@ -261,7 +262,7 @@ class EmotionDetector:
                 "bbox": [0, 0, width, height],
                 "emotion": emotion_result,
             })
-    
+
         return detections
     
     
@@ -337,7 +338,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "timestamp": time.time()
                 }
                 
-                await websocket.send_json(response)
+                await websocket.send_json(jsonable_encoder(response))
                 
             except Exception as e:
                 logger.error(f"Error processing frame: {e}")
