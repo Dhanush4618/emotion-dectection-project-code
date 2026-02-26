@@ -215,10 +215,11 @@ class EmotionDetector:
                     w = int(bbox.width * width)
                     h = int(bbox.height * height)
 
-                    x = max(0, x)
-                    y = max(0, y)
-                    w = min(w, width - x)
-                    h = min(h, height - y)
+                    # Ensure coordinates are within frame bounds and are plain Python ints
+                    x = int(max(0, x))
+                    y = int(max(0, y))
+                    w = int(min(w, width - x))
+                    h = int(min(h, height - y))
 
                     if w > 0 and h > 0:
                         face_img = rgb_frame[y:y + h, x:x + w]
@@ -239,10 +240,11 @@ class EmotionDetector:
                     minSize=(40, 40),
                 )
                 for (x, y, w, h) in faces:
-                    x = max(0, x)
-                    y = max(0, y)
-                    w = min(w, width - x)
-                    h = min(h, height - y)
+                    # Ensure coordinates are within frame bounds and are plain Python ints
+                    x = int(max(0, int(x)))
+                    y = int(max(0, int(y)))
+                    w = int(min(int(w), width - x))
+                    h = int(min(int(h), height - y))
 
                     if w > 0 and h > 0:
                         face_img = rgb_frame[y:y + h, x:x + w]
@@ -259,7 +261,7 @@ class EmotionDetector:
             face_img = rgb_frame  # whole frame
             emotion_result = self.detect_emotion(face_img)
             detections.append({
-                "bbox": [0, 0, width, height],
+                "bbox": [int(0), int(0), int(width), int(height)],
                 "emotion": emotion_result,
             })
 
